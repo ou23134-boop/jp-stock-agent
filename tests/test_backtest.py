@@ -25,7 +25,7 @@ class TestBacktestStrategy:
 
     def test_sma_crossover_returns_expected_keys(self):
         """Test that sma_crossover strategy returns dict with all expected metric keys."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "sma_crossover")
@@ -41,7 +41,7 @@ class TestBacktestStrategy:
 
     def test_sma_crossover_returns_numeric_metrics(self):
         """Test that sma_crossover returns numeric values for key metrics."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "sma_crossover")
@@ -53,7 +53,7 @@ class TestBacktestStrategy:
 
     def test_ema_crossover_no_error(self):
         """Test that ema_crossover strategy runs without error."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "ema_crossover")
@@ -63,7 +63,7 @@ class TestBacktestStrategy:
 
     def test_rsi_reversal_no_error(self):
         """Test that rsi_reversal strategy runs without error."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "rsi_reversal")
@@ -73,7 +73,7 @@ class TestBacktestStrategy:
 
     def test_macd_crossover_no_error(self):
         """Test that macd_crossover strategy runs without error."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "macd_crossover")
@@ -83,7 +83,7 @@ class TestBacktestStrategy:
 
     def test_invalid_strategy_returns_error(self):
         """Test that invalid strategy name returns error dict."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "invalid_strategy_xyz")
@@ -103,7 +103,7 @@ class TestBacktestStrategy:
 
     def test_custom_initial_capital_affects_metrics(self):
         """Test that custom initial_capital parameter is used."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -120,7 +120,7 @@ class TestBacktestCompare:
 
     def test_compare_returns_list(self):
         """Test that backtest_compare returns a list of results."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_compare("7203")
@@ -130,7 +130,7 @@ class TestBacktestCompare:
 
     def test_compare_results_sorted_by_return(self):
         """Test that compare results are sorted by total_return_pct descending."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_compare("7203", strategies=["sma_crossover", "ema_crossover"])
@@ -144,7 +144,7 @@ class TestBacktestCompare:
 
     def test_compare_multiple_strategies(self):
         """Test comparing multiple strategies."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             strategies = ["sma_crossover", "ema_crossover", "rsi_reversal"]
@@ -159,7 +159,7 @@ class TestBacktestOptimize:
 
     def test_optimize_returns_list_with_different_values(self):
         """Test that optimize returns list with results for different parameter values."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             param_range = [10, 20, 30]
@@ -177,7 +177,7 @@ class TestBacktestOptimize:
 
     def test_optimize_results_sorted_by_return(self):
         """Test that optimize results are sorted by total_return_pct descending."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             param_range = [10, 20, 30]
@@ -197,7 +197,7 @@ class TestBacktestWalkForward:
 
     def test_walk_forward_returns_dict_with_windows(self):
         """Test that walk_forward returns dict with window_results."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_walk_forward("7203", "sma_crossover")
@@ -210,7 +210,7 @@ class TestBacktestWalkForward:
 
     def test_walk_forward_returns_overall_metrics(self):
         """Test that walk_forward includes overall metrics."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_walk_forward("7203", "sma_crossover")
@@ -226,7 +226,7 @@ class TestBacktestMonteCarlo:
 
     def test_monte_carlo_returns_dict_with_metrics(self):
         """Test that monte_carlo returns dict with probability metrics."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_monte_carlo("7203", "sma_crossover")
@@ -239,7 +239,7 @@ class TestBacktestMonteCarlo:
 
     def test_monte_carlo_confidence_interval_format(self):
         """Test that confidence_interval_90 is properly formatted."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_monte_carlo("7203", "sma_crossover", num_simulations=100)
@@ -256,7 +256,7 @@ class TestBacktestAdvancedMetrics:
 
     def test_advanced_metrics_returns_dict(self):
         """Test that advanced_metrics returns dict with extended metrics."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_advanced_metrics("7203", "sma_crossover")
@@ -269,7 +269,7 @@ class TestBacktestAdvancedMetrics:
 
     def test_advanced_metrics_includes_all_base_metrics(self):
         """Test that advanced_metrics includes base backtest metrics."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_advanced_metrics("7203", "sma_crossover")
@@ -365,7 +365,7 @@ class TestBacktestErrorHandling:
 
     def test_insufficient_data_returns_error(self):
         """Test that insufficient data returns error."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             # Very small dataset
             mock_get.return_value = _make_ohlcv_df(days=5)
 

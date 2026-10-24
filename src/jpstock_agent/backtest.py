@@ -56,25 +56,20 @@ class CostModel:
         Returns:
             (effective_price, commission_paid, shares_bought)
         """
-        cost_pct = self.total_cost_pct()
-        effective_price = price * (1 + cost_pct)
-        commission = max(capital * self.commission_pct, self.min_commission)
-        available = capital - commission
-        shares = available / effective_price if effective_price > 0 else 0
-        return effective_price, commission, shares
+        # Commission is charged on executed notional, separately from price impact.
+        effective_price = price * (1 + self.slippage_pct + self.spread_pct)
+        if effective_price <= 0 or capital <= self.min_commission:
+            return effective_price, 0.0, 0.0
+        notional = min(capital / (1 + self.commission_pct), capital - self.min_commission)
+        commission = max(notional * self.commission_pct, self.min_commission)
+        return effective_price, commission, notional / effective_price
 
     def apply_sell(self, price: float, shares: float) -> tuple:
-        """Apply costs to a sell order.
-
-        Returns:
-            (effective_price, commission_paid, proceeds)
-        """
-        cost_pct = self.total_cost_pct()
-        effective_price = price * (1 - cost_pct)
+        """Return execution price, commission and net proceeds; charge fees once."""
+        effective_price = price * (1 - self.slippage_pct - self.spread_pct)
         gross = shares * effective_price
         commission = max(gross * self.commission_pct, self.min_commission)
-        proceeds = gross - commission
-        return effective_price, commission, proceeds
+        return effective_price, commission, gross - commission
 
     def to_dict(self) -> dict:
         """Serialize cost model parameters."""
@@ -272,6 +267,8 @@ def backtest_strategy(
 
         # Fetch OHLCV data
         df = _get_ohlcv_df(symbol, start=start_date, end=end_date, source=source)
+        if isinstance(df, dict):
+            return df
         if df is None or df.empty:
             return {"error": f"Failed to fetch data for {symbol}"}
 
@@ -288,7 +285,7 @@ def backtest_strategy(
 
         # Calculate metrics
         metrics = _calculate_metrics(
-            df,
+            signals_df,
             trades,
             initial_capital,
             final_capital,
@@ -302,6 +299,9 @@ def backtest_strategy(
         metrics["cost_model"] = cost_model.to_dict()
         metrics["total_costs_paid"] = _round_val(total_costs, 2)
         metrics["position_sizing"] = position_sizing
+        metrics["execution_model"] = "previous_close_signal_next_open"
+        metrics["terminal_liquidation"] = "last_close"
+        metrics["share_model"] = "fractional_research_only"
 
         return metrics
 
@@ -459,6 +459,8 @@ def backtest_walk_forward(
 
         # Fetch full data range
         df = _get_ohlcv_df(symbol, start=start_date, end=end_date, source=source)
+        if isinstance(df, dict):
+            return df
         if df is None or df.empty:
             return {"error": f"Failed to fetch data for {symbol}"}
 
@@ -709,7 +711,8 @@ def backtest_advanced_metrics(
             start_date = start
 
         df = _get_ohlcv_df(symbol, start=start_date, end=end_date, source=source)
-        daily_returns = df["close"].pct_change().dropna()
+        equity = pd.Series(df.attrs["equity_curve"], index=df.index, dtype=float)
+        daily_returns = equity.pct_change().dropna()
 
         # Sortino ratio (using downside deviation)
         downside_returns = daily_returns[daily_returns < 0]
@@ -861,6 +864,7 @@ def backtest_realistic(
             end=end,
             initial_capital=initial_capital,
             source=source,
+            position_sizing=position_sizing,
             **params,
         )
         if isinstance(zero_result, dict) and "error" not in zero_result:
@@ -1081,113 +1085,78 @@ def _execute_trades(
         sizing_params = {}
 
     trades = []
-    capital = initial_capital
+    capital = float(initial_capital)
     total_costs = 0.0
-    position = None  # None or (shares, entry_price, entry_date)
-
-    # Track historical trades for Kelly sizing
+    position = None
     completed_trades = []
-
-    # Pre-compute ATR if needed for ATR-based sizing
+    equity = []
     atr_series = None
-    if position_sizer == _position_size_atr and "high" in signals_df.columns:
+    if position_sizer == _position_size_atr:
         atr_series = _calculate_atr(signals_df, 14)
 
-    for i, row in signals_df.iterrows():
-        signal = row["signal"]
-        price = row["close"]
+    def close_position(date, price, reason, signal_date=None):
+        nonlocal capital, total_costs, position
+        shares, entry_outlay = position
+        eff_price, commission, proceeds = cost_model.apply_sell(price, shares)
+        total_costs += commission + (price - eff_price) * shares
+        trade_return = (proceeds / entry_outlay - 1) * 100
+        capital += proceeds
+        completed_trades.append(trade_return)
+        trades.append({
+            "date": str(date.date()), "action": "SELL",
+            "signal_date": str(signal_date.date()) if signal_date is not None else None,
+            "reason": reason, "price": _round_val(price, 2),
+            "effective_price": _round_val(eff_price, 2),
+            "shares": _round_val(shares, 4), "capital": _round_val(capital, 2),
+            "commission": _round_val(commission, 2),
+            "return_pct": _round_val(trade_return, 2),
+        })
+        position = None
 
+    for bar, (date, row) in enumerate(signals_df.iterrows()):
+        # A completed bar's signal can first execute at the next bar's open.
+        signal = signals_df.iloc[bar - 1]["signal"] if bar else 0
+        price = float(row["open"])
+        if not np.isfinite(price) or price <= 0:
+            raise ValueError("Backtests require a positive, finite open price on every bar")
         if signal == 1 and position is None:
-            # Build sizing kwargs
             sz_kwargs = dict(sizing_params)
-            if atr_series is not None and i in atr_series.index:
-                atr_val = atr_series.loc[i]
+            if atr_series is not None and bar:
+                atr_val = atr_series.iloc[bar - 1]
                 if pd.notna(atr_val):
                     sz_kwargs["atr"] = float(atr_val)
-
-            # For Kelly: use historical win rate & avg win/loss
             if position_sizer == _position_size_kelly and completed_trades:
                 wins = [t for t in completed_trades if t > 0]
                 losses = [t for t in completed_trades if t < 0]
-                sz_kwargs["win_rate"] = len(wins) / len(completed_trades) if completed_trades else 0.5
+                sz_kwargs["win_rate"] = len(wins) / len(completed_trades)
                 sz_kwargs["avg_win"] = abs(np.mean(wins)) / 100 if wins else 0.01
                 sz_kwargs["avg_loss"] = abs(np.mean(losses)) / 100 if losses else 0.01
-
-            # Calculate position size
-            shares = position_sizer(capital, price, **sz_kwargs)
-            if shares <= 0:
-                continue
-
-            # Apply buy costs
-            eff_price, commission, actual_shares = cost_model.apply_buy(price, shares * price)
-            # Re-calc shares from investable amount after costs
-            investable = min(shares * price, capital) - commission
-            if investable <= 0:
-                continue
-            actual_shares = investable / eff_price if eff_price > 0 else 0
-            total_costs += commission + (eff_price - price) * actual_shares
-
-            position = (actual_shares, eff_price, i)
-            trades.append(
-                {
-                    "date": str(i.date()),
-                    "action": "BUY",
-                    "price": _round_val(price, 2),
-                    "effective_price": _round_val(eff_price, 2),
-                    "shares": _round_val(actual_shares, 4),
-                    "capital": _round_val(capital, 2),
-                    "commission": _round_val(commission, 2),
-                }
-            )
-            capital -= actual_shares * eff_price + commission
-
+            requested_shares = position_sizer(capital, price, **sz_kwargs)
+            budget = min(requested_shares * price, capital)
+            if budget > 0:
+                eff_price, commission, shares = cost_model.apply_buy(price, budget)
+                if shares > 0:
+                    outlay = shares * eff_price + commission
+                    capital -= outlay
+                    total_costs += commission + (eff_price - price) * shares
+                    position = (shares, outlay)
+                    trades.append({
+                        "date": str(date.date()), "action": "BUY",
+                        "signal_date": str(signals_df.index[bar - 1].date()),
+                        "reason": "next_open", "price": _round_val(price, 2),
+                        "effective_price": _round_val(eff_price, 2),
+                        "shares": _round_val(shares, 4), "capital": _round_val(capital, 2),
+                        "commission": _round_val(commission, 2),
+                    })
         elif signal == -1 and position is not None:
-            # Sell signal and in position
-            shares, entry_price, entry_date = position
-            eff_price, commission, proceeds = cost_model.apply_sell(price, shares)
-            total_costs += commission + (price - eff_price) * shares
+            close_position(date, price, "next_open", signals_df.index[bar - 1])
+        equity.append(capital + (position[0] * float(row["close"]) if position else 0))
 
-            trade_return = ((eff_price - entry_price) / entry_price) * 100
-            capital += proceeds
-            completed_trades.append(trade_return)
-
-            trades.append(
-                {
-                    "date": str(i.date()),
-                    "action": "SELL",
-                    "price": _round_val(price, 2),
-                    "effective_price": _round_val(eff_price, 2),
-                    "shares": _round_val(shares, 4),
-                    "capital": _round_val(capital, 2),
-                    "commission": _round_val(commission, 2),
-                    "return_pct": _round_val(trade_return, 2),
-                }
-            )
-            position = None
-
-    # Close any remaining position at the last price
+    # Explicit end-of-sample liquidation; never execute the final bar's new signal.
     if position is not None:
-        shares, entry_price, entry_date = position
-        last_price = signals_df.iloc[-1]["close"]
-        eff_price, commission, proceeds = cost_model.apply_sell(last_price, shares)
-        total_costs += commission + (last_price - eff_price) * shares
-
-        trade_return = ((eff_price - entry_price) / entry_price) * 100
-        capital += proceeds
-
-        trades.append(
-            {
-                "date": str(signals_df.index[-1].date()),
-                "action": "SELL",
-                "price": _round_val(last_price, 2),
-                "effective_price": _round_val(eff_price, 2),
-                "shares": _round_val(shares, 4),
-                "capital": _round_val(capital, 2),
-                "commission": _round_val(commission, 2),
-                "return_pct": _round_val(trade_return, 2),
-            }
-        )
-
+        close_position(signals_df.index[-1], float(signals_df.iloc[-1]["close"]), "end_of_sample")
+        equity[-1] = capital
+    signals_df.attrs["equity_curve"] = equity
     return trades, capital, total_costs
 
 
@@ -1245,7 +1214,8 @@ def _calculate_metrics(
 
     # Sharpe ratio (annualized, risk-free=0)
     if trading_days > 1:
-        daily_returns = df["close"].pct_change().dropna()
+        equity = pd.Series(df.attrs["equity_curve"], index=df.index, dtype=float)
+        daily_returns = equity.pct_change().dropna()
         mean_daily_return = daily_returns.mean()
         std_daily_return = daily_returns.std()
         if std_daily_return > 0:
@@ -1258,9 +1228,9 @@ def _calculate_metrics(
         sharpe_ratio = 0.0
 
     # Max drawdown
-    cumulative = (1 + df["close"].pct_change()).cumprod()
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative - running_max) / running_max
+    equity = pd.Series(df.attrs["equity_curve"], index=df.index, dtype=float)
+    running_max = equity.cummax().clip(lower=initial_capital)
+    drawdown = (equity - running_max) / running_max
     max_drawdown = _round_val(drawdown.min() * 100, 2)
 
     # Buy & hold benchmark
@@ -1301,12 +1271,10 @@ def _calculate_metrics(
 
 def _calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     """Calculate RSI (Relative Strength Index)."""
-    delta = prices.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+    # Same Wilder smoothing and warm-up as ta.ta_rsi.
+    from ta.momentum import RSIIndicator
+
+    return RSIIndicator(prices, window=period).rsi()
 
 
 def _calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:

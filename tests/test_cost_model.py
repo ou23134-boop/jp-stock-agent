@@ -251,7 +251,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_with_costs_returns_cost_model(self):
         """Test that backtest results include cost_model info."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -267,7 +267,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_with_costs_lower_returns_than_without(self):
         """Test that costs reduce total return."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result_no_cost = backtest.backtest_strategy("7203", "sma_crossover")
@@ -281,7 +281,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_zero_cost_backward_compatible(self):
         """Test that default (zero cost) backtest is backward compatible."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy("7203", "sma_crossover")
@@ -293,7 +293,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_with_position_sizing(self):
         """Test backtest with ATR position sizing."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -306,7 +306,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_with_kelly_sizing(self):
         """Test backtest with Kelly Criterion sizing."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -319,7 +319,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_with_max_loss_sizing(self):
         """Test backtest with max loss sizing."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -332,7 +332,7 @@ class TestBacktestWithCosts:
 
     def test_backtest_trades_include_effective_price(self):
         """Test that trades include effective_price and commission fields."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_strategy(
@@ -351,7 +351,7 @@ class TestBacktestRealistic:
 
     def test_realistic_jp_market(self):
         """Test realistic backtest with JP market preset."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_realistic("7203", "sma_crossover", market="jp")
@@ -363,7 +363,7 @@ class TestBacktestRealistic:
 
     def test_realistic_vn_market(self):
         """Test realistic backtest with VN market preset."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_realistic("ACB", "sma_crossover", market="vn")
@@ -372,7 +372,7 @@ class TestBacktestRealistic:
 
     def test_realistic_zero_market(self):
         """Test realistic backtest with zero cost preset."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_realistic(
@@ -385,7 +385,7 @@ class TestBacktestRealistic:
 
     def test_realistic_comparison_shows_cost_impact(self):
         """Test that comparison section shows cost impact."""
-        with patch("jpstock_agent.ta._get_ohlcv_df") as mock_get:
+        with patch("jpstock_agent.backtest._get_ohlcv_df") as mock_get:
             mock_get.return_value = _make_ohlcv_df(days=252)
 
             result = backtest.backtest_realistic("7203", "sma_crossover", market="jp")
